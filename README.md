@@ -5,7 +5,7 @@ A terminal Space Invaders game built with Python curses. No dependencies require
 ![Python 3.6+](https://img.shields.io/badge/python-3.6%2B-blue)
 ![macOS](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
-### [>>> PLAY IN YOUR BROWSER <<<](https://dingopride.github.io/spacebashers/)
+### [>>> PLAY IN YOUR BROWSER <<<](https://0xdingo.github.io/spacebashers/)
 
 ## Quick Start (Terminal)
 
