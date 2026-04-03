@@ -240,6 +240,7 @@ class GameState:
             "fire_cd": 0.15,
             "pw": None, "pw_timer": 0,
             "combo": 0, "last_kill": 0,
+            "ammo": 7, "max_ammo": 7, "last_reload": 0,
         }
         self.players.append(p)
         self.player_inputs[pid] = {"l": False, "r": False, "f": False}
@@ -358,12 +359,22 @@ class GameState:
                 p["pw"] = None
 
             cd = 0.06 if p["pw"] == "rapid" else p["fire_cd"]
-            player_bullets = sum(1 for b in self.bullets if b["owner"] == p["id"])
-            if inp.get("f") and player_bullets < 3 and t - p["last_fire"] >= cd:
+            reload_interval = cd * 1.67
+
+            # Magazine reload
+            if p["ammo"] < p["max_ammo"] and t - p["last_reload"] >= reload_interval:
+                p["ammo"] += 1
+                p["last_reload"] = t
+
+            # Fire (requires ammo)
+            if inp.get("f") and p["ammo"] > 0 and t - p["last_fire"] >= cd:
                 bx = round(p["x"]) + SHIP_W // 2
                 self.bullets.append({"x": bx, "y": p["y"] - 1, "owner": p["id"], "color": p["color"]})
                 self.pending_sounds.append("shoot")
                 p["last_fire"] = t
+                p["ammo"] -= 1
+                if p["ammo"] < p["max_ammo"] and p["last_reload"] < t - reload_interval:
+                    p["last_reload"] = t
 
         # Spawn invaders
         if self.invaders_to_spawn > 0 and t - self.spawn_timer >= self.spawn_interval:
@@ -567,6 +578,7 @@ class GameState:
                 "alive": p["alive"],
                 "pw": p["pw"], "combo": p["combo"],
                 "last_kill": round(p.get("last_kill", 0), 1),
+                "ammo": p["ammo"], "max_ammo": p["max_ammo"],
             } for p in self.players],
             "invaders": [{
                 "x": round(inv["x"], 1), "y": round(inv["y"], 1),
@@ -730,6 +742,12 @@ class Renderer:
             if p["id"] == my_id:
                 self._put(py + 1, px + 1, f"[{p['name']}]", self._attr(p["color"]))
             self._put(py, px, p["ship"], attr)
+            # Ammo pips
+            ammo = p.get("ammo", 7)
+            max_ammo = p.get("max_ammo", 7)
+            pips = "|" * ammo + "." * (max_ammo - ammo)
+            ammo_col = p["color"] if ammo > 3 else "yellow" if ammo > 1 else "red"
+            self._put(py + 1, px - 1, pips, self._attr(ammo_col if p["alive"] else "dim"))
 
     def _draw_bullets(self, snap):
         for b in snap.get("bullets", []):

@@ -217,6 +217,9 @@ class Game:
         self.firing = False
         self.last_fire_time = 0
         self.fire_cooldown = 0.15  # seconds between shots
+        self.ammo = 7
+        self.max_ammo = 7
+        self.last_reload = 0
 
         # Invader grid
         self.invaders = []
@@ -403,12 +406,21 @@ class Game:
         if self.moving_right:
             self.player_x = min(self.w - PLAYER_SHIP_W - 1, self.player_x + 2)
 
-        # Apply firing with cooldown
-        if self.firing and len(self.bullets) < 3 and now - self.last_fire_time >= self.fire_cooldown:
+        # Magazine reload
+        reload_interval = self.fire_cooldown * 1.67
+        if self.ammo < self.max_ammo and now - self.last_reload >= reload_interval:
+            self.ammo += 1
+            self.last_reload = now
+
+        # Apply firing with cooldown (requires ammo)
+        if self.firing and self.ammo > 0 and now - self.last_fire_time >= self.fire_cooldown:
             bx = self.player_x + PLAYER_SHIP_W // 2
             self.bullets.append([bx, self.player_y - 1])
             sfx.play("shoot")
             self.last_fire_time = now
+            self.ammo -= 1
+            if self.ammo < self.max_ammo and self.last_reload < now - reload_interval:
+                self.last_reload = now
 
         # Move bullets up
         new_bullets = []
@@ -616,6 +628,16 @@ class Game:
 
         # Player
         self._safe_addstr(self.player_y, self.player_x, PLAYER_SHIP, curses.color_pair(1) | curses.A_BOLD)
+
+        # Ammo pips below ship
+        ammo_pips = "|" * self.ammo + "." * (self.max_ammo - self.ammo)
+        if self.ammo > 3:
+            ammo_color = curses.color_pair(1)  # green
+        elif self.ammo > 1:
+            ammo_color = curses.color_pair(4)  # yellow
+        else:
+            ammo_color = curses.color_pair(5)  # red
+        self._safe_addstr(self.player_y + 1, self.player_x - 1, ammo_pips, ammo_color)
 
         # Player bullets
         for b in self.bullets:

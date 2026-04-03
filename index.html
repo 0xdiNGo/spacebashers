@@ -269,6 +269,9 @@ function createPlayer(index) {
     powerupTimer: 0,
     combo: 0,
     lastKillTime: 0,
+    ammo: 7,
+    maxAmmo: 7,
+    lastReload: 0,
   };
 }
 
@@ -444,12 +447,22 @@ function update() {
     // Powerup expiry
     if (p.powerup && t > p.powerupTimer) p.powerup = null;
 
+    // Magazine reload
     const cd = p.powerup === "rapid" ? 0.06 : p.fireCooldown;
-    if (keys[p.fireKey] && t - p.lastFire >= cd) {
+    const reloadInterval = cd * 1.67;
+    if (p.ammo < p.maxAmmo && t - p.lastReload >= reloadInterval) {
+      p.ammo++;
+      p.lastReload = t;
+    }
+
+    // Fire (requires ammo)
+    if (keys[p.fireKey] && p.ammo > 0 && t - p.lastFire >= cd) {
       const bx = Math.round(p.x) + Math.floor(SHIP_W / 2);
       bullets.push({ x: bx, y: p.y - 1, owner: p.index, color: p.color });
       sfx.shoot();
       p.lastFire = t;
+      p.ammo--;
+      if (p.ammo < p.maxAmmo && p.lastReload < t - reloadInterval) p.lastReload = t;
     }
   }
 
@@ -825,6 +838,10 @@ function drawGame() {
     if (p.powerup && Math.sin(now() * 12) > 0) {
       drawText(p.ship, Math.round(p.x), p.y, C.white, true);
     }
+    // Ammo pips below ship
+    const ammoPips = "|".repeat(p.ammo) + ".".repeat(p.maxAmmo - p.ammo);
+    const ammoColor = p.ammo > 3 ? p.color : p.ammo > 1 ? C.yellow : C.red;
+    drawText(ammoPips, Math.round(p.x) - 1, p.y + 1, ammoColor);
   }
 
   // Bullets
@@ -1072,6 +1089,7 @@ function buildSnapshot() {
       hp: p.hp, maxHp: p.maxHp, score: p.score, kills: p.kills,
       alive: p.alive, powerup: p.powerup,
       combo: p.combo, lastKillTime: p.lastKillTime,
+      ammo: p.ammo, maxAmmo: p.maxAmmo,
     })),
     invaders: invaders.filter(i => i.active).map(i => ({
       x: Math.round(i.x * 10) / 10, y: Math.round(i.y * 10) / 10,
@@ -1218,10 +1236,17 @@ function netUpdate() {
         if (inp.l) p.x = Math.max(0, p.x - 0.45);
         if (inp.r) p.x = Math.min(COLS - SHIP_W - 1, p.x + 0.45);
         const cd = p.powerup === "rapid" ? 0.06 : p.fireCooldown;
-        if (inp.f && t - p.lastFire >= cd) {
+        const reloadInterval = cd * 1.67;
+        if (p.ammo < p.maxAmmo && t - p.lastReload >= reloadInterval) {
+          p.ammo++;
+          p.lastReload = t;
+        }
+        if (inp.f && p.ammo > 0 && t - p.lastFire >= cd) {
           const bx = Math.round(p.x) + Math.floor(SHIP_W / 2);
           bullets.push({ x: bx, y: p.y - 1, owner: p.index, color: p.color });
           p.lastFire = t;
+          p.ammo--;
+          if (p.ammo < p.maxAmmo && p.lastReload < t - reloadInterval) p.lastReload = t;
         }
       }
     }
@@ -1308,6 +1333,11 @@ function drawClientState(snap) {
       if (p.powerup && Math.sin(t * 12) > 0) attr = C.white;
       drawText(p.ship, px, py, attr, true);
       if (p.index === netMyId) drawText(`[${p.name}]`, px + 1, py + 1, pc);
+      // Ammo pips
+      const mAmmo = p.ammo || 0, mMax = p.maxAmmo || 7;
+      const ammoPips = "|".repeat(mAmmo) + ".".repeat(mMax - mAmmo);
+      const ammoColor = mAmmo > 3 ? pc : mAmmo > 1 ? C.yellow : C.red;
+      drawText(ammoPips, px - 1, py + 1, ammoColor);
     }
 
     // Bullets

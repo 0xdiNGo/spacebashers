@@ -615,6 +615,27 @@ graph LR
 
 Max combo: 10x (+45 bonus per kill).
 
+### Ammo Magazine
+
+Every ship has a 7-round magazine. You can fire at full rate until empty, then you wait for rounds to reload. The magazine refills 67% slower than the fire rate, so sustained fire requires trigger discipline.
+
+```mermaid
+flowchart LR
+    A["Magazine: 7 rounds"] --> B["Fire at full rate<br/>0.15s between shots"]
+    B --> C["Magazine empty<br/>after ~1s of sustained fire"]
+    C --> D["Reload: 1 round every 0.25s<br/>(fire_cooldown × 1.67)"]
+    D --> E["Full mag in ~1.75s"]
+```
+
+| Stat | Normal | Rapid Powerup |
+|---|---|---|
+| Fire cooldown | 150ms | 60ms |
+| Reload interval | 250ms | 100ms |
+| Time to empty magazine | ~1.05s | ~0.42s |
+| Time to full reload | ~1.75s | ~0.70s |
+
+Ammo is displayed as pips below the player ship: `|||||||` (full) → `|||....` (3 remaining) → `.......` (empty). Pips turn yellow at 3 rounds, red at 1.
+
 ### Wave Scaling
 
 Each wave spawns more invaders that are harder to kill.
