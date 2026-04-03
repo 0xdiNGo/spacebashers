@@ -29,11 +29,11 @@ Space Invaders, reimagined for the terminal by someone who probably should have 
 
 ```mermaid
 graph LR
-    A[SpaceBashers] --> B["index.html<br/>Browser 1-4P Local"]
+    A[SpaceBashers] --> B["index.html<br/>Browser 1-4P<br/>Local + Network"]
     A --> C["spacebashers.py<br/>Terminal Classic 1P"]
     A --> D["netplay.py<br/>Terminal 1-4P Network"]
 
-    B --> E["HTML5 Canvas<br/>Web Audio API"]
+    B --> E["HTML5 Canvas<br/>Web Audio API<br/>WebRTC P2P"]
     C --> F["Python curses<br/>afplay Sound"]
     D --> G["Python curses<br/>TCP Sockets<br/>afplay Sound"]
 
@@ -45,9 +45,10 @@ graph LR
 
 | Mode | File | Players | Requires |
 |---|---|---|---|
-| Browser | `index.html` | 1-4 local | Any modern browser |
+| Browser (local) | `index.html` | 1-4 local | Any modern browser |
+| Browser (network) | `index.html` | 2-4 P2P | Any modern browser, WebRTC |
 | Terminal Classic | `spacebashers.py` | 1 | Python 3.6+, terminal with curses |
-| Network Multiplayer | `netplay.py` | 1-4 over LAN | Python 3.6+, terminal with curses |
+| Terminal Network | `netplay.py` | 1-4 over LAN | Python 3.6+, terminal with curses |
 
 ---
 
@@ -55,9 +56,17 @@ graph LR
 
 Open `index.html` or visit [0xdingo.github.io/spacebashers](https://0xdingo.github.io/spacebashers/).
 
-1-4 players crowd around one keyboard. Invaders rain down in waves. Everybody shoots. Most kills wins.
+1-4 players, local or over the network. Invaders rain down in waves, randomly shooting as they fall. Everybody competes for kills. Invader bullets can hit other invaders (friendly fire) but they don't aim for each other -- it's just collateral chaos. Most kills wins.
 
-### Controls
+### Title Screen
+
+| Key | Action |
+|---|---|
+| `Space` | Local game (1-4 players, one keyboard) |
+| `H` | Host a network game (generates invite code) |
+| `J` | Join a network game (paste host's code) |
+
+### Local Controls
 
 | Player | Move | Fire |
 |---|---|---|
@@ -66,21 +75,46 @@ Open `index.html` or visit [0xdingo.github.io/spacebashers](https://0xdingo.gith
 | P3 (orange) | `J` / `L` | `I` |
 | P4 (magenta) | Numpad `4` / `6` | Numpad `8` |
 
-`M` toggles sound. Select 1-4 players on the setup screen.
+`M` toggles sound. Select 1-4 players on the setup screen. Solo players can pick their preferred control scheme with left/right on the setup screen.
+
+### Browser Network Play (WebRTC)
+
+No server required. Works directly from GitHub Pages via peer-to-peer WebRTC DataChannels.
+
+```mermaid
+sequenceDiagram
+    participant H as Host (presses H)
+    participant C as Client (presses J)
+
+    Note over H: Generates invite code
+    H-->>C: Share code (Discord, text, etc.)
+    C-->>H: Pastes code, gets response code
+    H-->>C: Share response code back
+    Note over H: Pastes response, connection established
+    Note over H,C: P2P DataChannel open
+
+    loop Gameplay (20Hz)
+        C->>H: Input (left/right/fire flags)
+        H->>C: Full game state snapshot
+    end
+```
+
+Host runs the authoritative simulation. Up to 3 remote players can join (host can repeat the code exchange for each). All common keys (WASD, arrows, IJKL, numpad) work for network clients.
 
 ### Game Flow
 
 ```mermaid
 stateDiagram-v2
     [*] --> Title
-    Title --> Setup: SPACE
+    Title --> Setup: SPACE (local)
+    Title --> NetLobby: H or J (network)
+    NetLobby --> Setup: Connection established
     Setup --> Countdown: SPACE
     Countdown --> Playing: 3..2..1..GO
     Playing --> WaveEnd: All invaders cleared / all players dead
     WaveEnd --> Playing: Next wave (if waves remain)
     WaveEnd --> Results: Wave 5 complete or all dead
-    Results --> Title: Q
-    Results --> Setup: SPACE
+    Results --> Title: Q / SPACE
 ```
 
 ### Powerups
@@ -144,7 +178,7 @@ flowchart TD
     H -->|No| J[Continue lateral]
     I --> K[Speed up based on alive count]
     J --> K
-    K --> L[Enemy Fires from bottom row]
+    K --> L[Enemy fires from bottom-most alive invader per column]
     L --> M[Collision Detection]
     M --> N[Draw Frame]
     N --> A
@@ -158,6 +192,8 @@ flowchart TD
 - Invaders accelerate as their numbers thin: `speed = max(0.05, 0.5 * alive/total)`
 - Procedurally generated retro sound effects via macOS `afplay`
 - Level progression: each cleared wave increases invader speed and enemy fire rate
+  - Invader speed per level: `max(0.1, 0.5 - level * 0.05)` seconds between steps
+  - Enemy shot interval per level: `max(0.3, 1.0 - level * 0.1)` seconds
 
 ### Invader Grid Layout
 
@@ -179,7 +215,11 @@ Row 4:  /\/\ /\/\ /\/\ /\/\ /\/\ /\/\ /\/\ /\/\   10 pts  yellow
 
 ## Network Multiplayer
 
-Same hungry hungry hippos gameplay as the browser edition, but over the network via TCP. Pure Python stdlib. Zero dependencies. We implemented a custom client-server architecture with authoritative host simulation, state snapshot broadcasting, and buffered stream parsing for a game about shooting ASCII aliens in a terminal. We regret nothing.
+Network play is available in **both** the browser (WebRTC P2P, see [Browser Network Play](#browser-network-play-webrtc) above) and the terminal (TCP sockets, below). Because one network stack wasn't enough, apparently.
+
+### Terminal Network Play (netplay.py)
+
+Same hungry hungry hippos gameplay, over the network via TCP. Pure Python stdlib. Zero dependencies. We implemented a custom client-server architecture with authoritative host simulation, state snapshot broadcasting, and buffered stream parsing for a game about shooting ASCII aliens in a terminal. We regret nothing.
 
 ### Quick Start
 
@@ -244,6 +284,7 @@ graph TB
         BInput[Keyboard Input] --> BLoop[Game Loop<br/>requestAnimationFrame]
         BLoop --> BCanvas[Canvas Renderer]
         BLoop --> BAudio[Web Audio API]
+        BLoop --> BNet[WebRTC DataChannels<br/>P2P Host/Client]
     end
 
     subgraph "Terminal Classic (spacebashers.py)"
@@ -363,21 +404,33 @@ flowchart LR
 
 ### Sound Catalog
 
+**Terminal Classic (`spacebashers.py`):**
+
 | Sound | Waveform | Frequency | Duration | Trigger |
 |---|---|---|---|---|
 | `shoot` | Sine decay | 880Hz → 440Hz | 120ms | Player fires |
-| `kill` / `invader_kill` | Square + noise | 600Hz → 300Hz + burst | 160ms | Invader destroyed |
+| `invader_kill` | Square + noise | 600Hz → 300Hz + burst | 160ms | Invader destroyed |
 | `player_hit` | Noise + sine | White + 100Hz | 300ms | Player takes damage |
 | `mystery` | FM sine | 200Hz wobble ±100Hz | 400ms | Mystery ship appears |
 | `mystery_hit` | Square arpeggio | C5→E5→G5→C6 | 390ms | Mystery ship destroyed |
 | `march` | Square | 80Hz → 60Hz | 100ms | Invader grid steps |
 | `game_over` | Square descend | A4→F#4→E4→C4 | 1000ms | All HP gone |
-| `level_up` / `round_end` | Square ascend | C5→E5→G5→C6 | 600ms | Wave cleared |
+| `level_up` | Square ascend | C5→E5→G5→C6 | 600ms | Wave cleared |
+
+**Terminal Multiplayer (`netplay.py`) -- adds these on top of the above (minus `mystery`, `mystery_hit`, `march` which are classic-only):**
+
+| Sound | Waveform | Frequency | Duration | Trigger |
+|---|---|---|---|---|
+| `kill` | Square + noise | 600Hz → 300Hz + burst | 160ms | Invader destroyed |
+| `wave_start` | Square ascend | C4→E4→G4→C5 | 360ms | New wave begins |
+| `round_end` | Square ascend | C5→E5→G5→C6 | 600ms | Wave cleared |
 | `bonus_drop` | Sine | 1200Hz | 80ms | Powerup spawns |
 | `bonus_grab` | Square arpeggio | C5→G5→C6 | 180ms | Powerup collected |
 | `steal` | Sawtooth | 200Hz → 150Hz | 200ms | Score stolen |
 | `countdown` | Square | 440Hz | 150ms | 3.. 2.. 1.. |
 | `countdown_go` | Square | 880Hz | 300ms | GO! |
+
+The browser version achieves the same effects using Web Audio API oscillators and noise buffers -- same tones, same timing, different runtime.
 
 ### Channel System (Process Management)
 
@@ -403,7 +456,9 @@ flowchart TD
 
 ## Network Protocol
 
-Yes, we wrote a custom network protocol for a terminal game. Yes, it was necessary. No, we will not be using WebSockets like normal people.
+Yes, we wrote two custom network protocols -- one for the terminal (TCP + newline-delimited JSON) and one for the browser (WebRTC DataChannels + JSON). Yes, both were necessary. No, we will not be using WebSockets like normal people.
+
+The terminal protocol is documented below. The browser protocol uses the same JSON message format but transports it over WebRTC DataChannels with SDP offer/answer exchange via copy-paste for signaling. Zero infrastructure. Google STUN for NAT traversal.
 
 ### Wire Format
 
@@ -593,14 +648,32 @@ flowchart LR
     F -->|No| B
 ```
 
+### Invader Shooting
+
+Invaders randomly fire downward. Their bullets can hit players AND other invaders (friendly fire). They don't aim for each other -- it's just stray shots falling through the formation.
+
+```mermaid
+flowchart TD
+    A["Shot interval elapsed?<br/>max(0.3, 1.2 - wave × 0.1)s"] -->|Yes| B[Pick random active invader<br/>between rows 2 and ROWS-5]
+    B --> C["Fire bullet downward at 0.25 units/frame"]
+    C --> D{What does it hit?}
+    D -->|Player| E["-3 HP damage"]
+    D -->|Another invader| F["Damage invader (friendly fire!)<br/>No points awarded"]
+    D -->|Nothing| G[Falls off screen]
+```
+
+In classic mode (`spacebashers.py`), enemy shooting works differently: the bottom-most alive invader in each column randomly fires, targeting the player's row.
+
+In multiplayer (browser + `netplay.py`), invaders shoot randomly from anywhere in the formation, and their bullets cascade through the swarm causing accidental kills.
+
 ### HP and Damage
 
 ```mermaid
 flowchart TD
     A[Player Starts] --> B["HP: 10 / 10"]
     B --> C{"Damage Source"}
-    C -->|"Enemy bullet (classic)"| D["-3 HP"]
-    C -->|"Invader reaches bottom (multi)"| E["-2 HP"]
+    C -->|"Enemy bullet (all modes)"| D["-3 HP"]
+    C -->|"Invader reaches bottom (multi only)"| E["-2 HP"]
     D --> F{"HP <= 0?"}
     E --> F
     F -->|Yes| G[Player Dies]
@@ -632,10 +705,11 @@ Formula: `speed = max(0.05, 0.5 × alive/total)` seconds between grid steps.
 
 | Component | Requirement |
 |---|---|
-| Browser | Any modern browser (Chrome, Firefox, Safari, Edge) |
+| Browser (local) | Any modern browser (Chrome, Firefox, Safari, Edge) |
+| Browser (network) | WebRTC-capable browser + STUN access (works on all major browsers) |
 | Terminal | Python 3.6+, terminal with curses support |
 | Sound (terminal) | macOS with `afplay` (game runs silently elsewhere) |
-| Network | LAN connectivity, TCP port 7777 (configurable) |
+| Terminal network | LAN connectivity, TCP port 7777 (configurable) |
 
 ---
 
@@ -696,6 +770,9 @@ gitGraph
     commit id: "push to github"
     commit id: "multiplayer (more friendships destroyed)"
     commit id: "netplay (the LAN party update)"
+    commit id: "browser WebRTC (zero infrastructure)"
+    commit id: "invaders shoot back (friendly fire)"
+    commit id: "solo control scheme picker"
 ```
 
 ```
@@ -1185,6 +1262,35 @@ Date:   Wed Apr 2 01:15:00 2026 -0500
  A index.html  | 477 +++++++++++++++++++++
  A netplay.py  | 1099 ++++++++++++++++++++++++++++++++++++++++++++++
  2 files changed, 1576 insertions(+)
+
+    maintained by diNGo. the last one standing.
+```
+
+```
+commit c3d4e5f
+Author: diNGo <dingo@usomad.me>
+Date:   Wed Apr 2 03:30:00 2026 -0500
+
+    v2.1: browser WebRTC network play. because hosting a
+    python server was too easy.
+
+    peer-to-peer via WebRTC DataChannels. signaling via
+    copy-paste SDP codes. zero infrastructure. works from
+    github pages. the invite codes are 800 characters long
+    and look like a cat walked on your keyboard. we shipped
+    it anyway.
+
+    also: invaders now shoot back. their bullets can kill
+    each other (friendly fire). they don't aim for each
+    other. it's just chaos. like this codebase.
+
+    solo players can pick their control scheme now too.
+    this took 6 lines of code. we will not be commissioning
+    a philosophy paper this time.
+
+ M index.html  | 570 ++++++++++++++++++++++++++++++
+ M netplay.py  | 170 +++++++++
+ 2 files changed, 740 insertions(+)
 
     maintained by diNGo. the last one standing.
 ```
